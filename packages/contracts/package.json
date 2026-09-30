@@ -1,0 +1,6 @@
+{
+  "name": "@eventflow/contracts", "version": "0.1.0", "private": true,
+  "type": "module", "types": "./src/index.ts", "exports": { ".": { "types": "./src/index.ts", "default": "./src/index.ts" } },
+  "scripts": { "build": "tsc -p tsconfig.json", "lint": "eslint src", "typecheck": "tsc --noEmit", "test": "vitest run --passWithNoTests" },
+  "devDependencies": { "@eslint/js": "9.33.0", "@eventflow/eslint-config": "workspace:*", "eslint": "9.33.0", "typescript": "5.9.2", "typescript-eslint": "8.39.0", "vitest": "3.2.4" }
+}

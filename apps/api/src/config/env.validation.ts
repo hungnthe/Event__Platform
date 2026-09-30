@@ -1,0 +1,27 @@
+import * as Joi from 'joi';
+
+export const envValidationSchema = Joi.object({
+  NODE_ENV: Joi.string().valid('development', 'test', 'production').default('development'),
+  API_PORT: Joi.number().port().default(3001),
+  CORS_ORIGINS: Joi.string().required(),
+  SESSION_COOKIE_NAME: Joi.string().pattern(/^[A-Za-z0-9_-]+$/).default('eventflow_session'),
+  SESSION_COOKIE_DOMAIN: Joi.string().allow('').optional(),
+  SESSION_DEFAULT_TTL_HOURS: Joi.number().integer().min(1).max(72).default(12),
+  SESSION_REMEMBER_TTL_DAYS: Joi.number().integer().min(1).max(90).default(30),
+  CSRF_SECRET: Joi.string().min(32).when('NODE_ENV', { is: 'production', then: Joi.string().min(32).required(), otherwise: Joi.string().min(32).default('development-only-csrf-secret-change-me') }),
+  DATABASE_URL: Joi.string().uri({ scheme: ['postgresql', 'postgres'] }).required(),
+  REDIS_URL: Joi.string().uri({ scheme: ['redis', 'rediss'] }).required(),
+  WS_ENABLED: Joi.boolean().truthy('true').falsy('false').default(true),
+  WS_NAMESPACE: Joi.string().valid('/notifications').default('/notifications'),
+  WS_ALLOWED_ORIGINS: Joi.string().default(Joi.ref('CORS_ORIGINS')),
+  SOCKET_IO_REDIS_CHANNEL_PREFIX: Joi.string().pattern(/^[A-Za-z0-9:_-]+$/).default('eventflow:socket.io'),
+  NOTIFICATION_OUTBOX_ENABLED: Joi.boolean().truthy('true').falsy('false').default(true),
+  NOTIFICATION_OUTBOX_POLL_INTERVAL_MS: Joi.number().integer().min(100).max(60_000).default(500),
+  NOTIFICATION_OUTBOX_BATCH_SIZE: Joi.number().integer().min(1).max(100).default(50),
+  NOTIFICATION_OUTBOX_MAX_ATTEMPTS: Joi.number().integer().min(1).max(50).default(10),
+  NOTIFICATION_OUTBOX_LOCK_TIMEOUT_MS: Joi.number().integer().min(1_000).max(300_000).default(30_000),
+  S3_ENDPOINT: Joi.string().uri({ scheme: ['http', 'https'] }).required(),
+  S3_REGION: Joi.string().required(), S3_BUCKET: Joi.string().min(3).required(),
+  S3_ACCESS_KEY: Joi.string().required(), S3_SECRET_KEY: Joi.string().min(8).required(),
+  S3_FORCE_PATH_STYLE: Joi.boolean().truthy('true').falsy('false').default(true),
+});

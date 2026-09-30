@@ -1,0 +1,12 @@
+'use client';
+import React, { useCallback, useEffect, useState } from 'react'; import type { HealthDependencies } from '@eventflow/contracts'; import { getSystemStatus } from '../../lib/api-client';
+type State = { phase: 'loading' } | { phase: 'success'; checkedAt: string; dependencies: HealthDependencies } | { phase: 'failure'; checkedAt: string; message: string; dependencies?: HealthDependencies };
+const names: Record<keyof HealthDependencies, string> = { postgres: 'PostgreSQL', redis: 'Redis', objectStorage: 'Object storage' }; const dependencyKeys = ['postgres', 'redis', 'objectStorage'] as const;
+export function StatusPanel() {
+  const [state, setState] = useState<State>({ phase: 'loading' });
+  const check = useCallback(async () => { setState({ phase: 'loading' }); try { const result = await getSystemStatus(); if (result.status === 'ok') setState({ phase: 'success', checkedAt: result.timestamp, dependencies: result.dependencies }); else setState({ phase: 'failure', checkedAt: result.timestamp, message: 'Một hoặc nhiều dependency chưa sẵn sàng.', dependencies: result.dependencies }); } catch (error: unknown) { setState({ phase: 'failure', checkedAt: new Date().toISOString(), message: error instanceof Error ? error.message : 'Không thể kết nối API.' }); } }, []);
+  useEffect(() => { void check(); }, [check]);
+  if (state.phase === 'loading') return <p role="status" className="mt-6 text-slate-600">Đang kiểm tra chuỗi kết nối…</p>;
+  const dependencies = state.dependencies;
+  return <section className="mt-6 rounded-lg border border-slate-200 bg-white p-6 shadow-sm" aria-live="polite"><div className="flex items-center justify-between"><p className={state.phase === 'success' ? 'font-bold text-emerald-700' : 'font-bold text-red-700'}>API: {state.phase === 'success' ? 'Sẵn sàng' : 'Không sẵn sàng'}</p><button className="rounded border border-slate-300 px-3 py-2" onClick={() => void check()}>Kiểm tra lại</button></div>{dependencies && <dl className="mt-5 grid gap-3 sm:grid-cols-3">{dependencyKeys.map((key) => <div key={key} className="rounded bg-slate-50 p-3"><dt className="text-sm text-slate-600">{names[key]}</dt><dd className={dependencies[key] === 'up' ? 'font-semibold text-emerald-700' : 'font-semibold text-red-700'}>{dependencies[key] === 'up' ? 'up' : 'down'}</dd></div>)}</dl>}<p className="mt-5 text-sm text-slate-600">Lần kiểm tra gần nhất: {new Date(state.checkedAt).toLocaleString('vi-VN')}</p>{state.phase === 'failure' && <p role="alert" className="mt-2 text-red-700">{state.message}</p>}</section>;
+}

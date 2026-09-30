@@ -1,0 +1,26 @@
+{
+  "name": "eventflow-foundation",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@11.19.0",
+  "engines": { "node": ">=22.0.0", "pnpm": ">=11.0.0" },
+  "scripts": {
+    "dev": "turbo dev --parallel",
+    "build": "turbo build",
+    "lint": "turbo lint",
+    "typecheck": "turbo typecheck",
+    "test": "turbo test",
+    "test:e2e": "pnpm --filter @eventflow/api test:e2e",
+    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
+    "infra:up": "docker compose -f infra/compose.dev.yml --env-file .env up -d",
+    "infra:down": "docker compose -f infra/compose.dev.yml --env-file .env down",
+    "infra:logs": "docker compose -f infra/compose.dev.yml --env-file .env logs -f",
+    "db:generate": "pnpm --filter @eventflow/api prisma:generate",
+    "db:migrate": "pnpm --filter @eventflow/api prisma:migrate",
+    "db:reset": "pnpm --filter @eventflow/api prisma:reset",
+    "db:seed:demo": "pnpm --filter @eventflow/api db:seed:demo",
+    "demo:prepare:event-task-flow": "pnpm --filter @eventflow/api demo:prepare:event-task-flow",
+    "demo:reset:event-task-flow": "pnpm --filter @eventflow/api demo:reset:event-task-flow"
+  },
+  "devDependencies": { "turbo": "2.5.6" }
+}

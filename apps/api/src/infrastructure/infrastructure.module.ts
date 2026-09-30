@@ -1,0 +1,2 @@
+import { Module } from '@nestjs/common'; import { ObjectStorageService } from './object-storage.service'; import { RedisService } from './redis.service'; import { SocketSessionRegistry } from './socket-session-registry.service';
+@Module({ providers: [RedisService, ObjectStorageService, SocketSessionRegistry], exports: [RedisService, ObjectStorageService, SocketSessionRegistry] }) export class InfrastructureModule {}

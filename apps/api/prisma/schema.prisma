@@ -1,0 +1,393 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum SystemRole {
+  USER
+  SYSTEM_ADMIN
+}
+
+enum UserStatus {
+  INVITED
+  ACTIVE
+  SUSPENDED
+}
+
+enum EventStatus {
+  DRAFT
+  UPCOMING
+  ONGOING
+  ENDED
+  ARCHIVED
+}
+
+enum EventMemberRole {
+  OWNER
+  COORDINATOR
+  DEPARTMENT_LEAD
+  MEMBER
+  VOLUNTEER
+  GUEST
+}
+
+enum EventMemberStatus {
+  ACTIVE
+  REMOVED
+}
+
+enum TaskStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  BLOCKED
+  IN_REVIEW
+  DONE
+  CANCELLED
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum TaskOrigin {
+  WORKFLOW_TEMPLATE
+  USER_CREATED
+}
+
+enum CalendarCategory {
+  EVENT
+  TASK
+  MEETING_INTERNAL
+  VOLUNTEER
+  OTHER
+}
+
+model User {
+  id                     String                  @id @default(uuid()) @db.Uuid
+  email                  String                  @unique
+  displayName            String?
+  passwordHash           String?
+  systemRole             SystemRole              @default(USER)
+  status                 UserStatus              @default(INVITED)
+  mustChangePassword     Boolean                 @default(false)
+  failedLoginCount       Int                     @default(0)
+  lastFailedLoginAt      DateTime?
+  lockedUntil            DateTime?
+  lastLoginAt            DateTime?
+  sessions               Session[]
+  createdEvents          Event[]                 @relation("EventCreator")
+  eventMemberships       EventMember[]
+  createdTasks           Task[]                  @relation("TaskCreator")
+  assignedTasks          Task[]                  @relation("TaskAssigner")
+  uploadedAttachments    TaskAttachment[]        @relation("AttachmentUploader")
+  auditLogs              AuditLog[]              @relation("AuditActor")
+  receivedNotifications  Notification[]          @relation("NotificationRecipient")
+  actedNotifications     Notification[]          @relation("NotificationActor")
+  notificationPreference NotificationPreference?
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+
+  @@index([status, systemRole])
+}
+
+model Session {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @db.Uuid
+  tokenHash  String    @unique
+  rememberMe Boolean   @default(false)
+  userAgent  String?
+  ipAddress  String?
+  lastSeenAt DateTime  @default(now())
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([userId, revokedAt, expiresAt])
+}
+
+model Event {
+  id               String                       @id @default(uuid()) @db.Uuid
+  name             String
+  description      String?
+  locationName     String?
+  startsAt         DateTime
+  endsAt           DateTime
+  status           EventStatus                  @default(DRAFT)
+  calendarCategory CalendarCategory             @default(EVENT)
+  workflowTemplateVersion String?
+  workflowInitializedAt   DateTime?
+  coverStorageKey  String?
+  createdById      String                       @db.Uuid
+  createdBy        User                         @relation("EventCreator", fields: [createdById], references: [id])
+  departments      Department[]
+  workflowStages   WorkflowStage[]
+  members          EventMember[]
+  tasks            Task[]
+  permissionGrants EventMemberPermissionGrant[]
+  notifications    Notification[]
+  archivedAt       DateTime?
+  createdAt        DateTime                     @default(now())
+  updatedAt        DateTime                     @updatedAt
+
+  @@index([createdById])
+  @@index([status, startsAt])
+}
+
+model Department {
+  id          String        @id @default(uuid()) @db.Uuid
+  eventId     String        @db.Uuid
+  event       Event         @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  members     EventMember[]
+  tasks       Task[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@unique([eventId, name])
+  @@index([eventId])
+}
+
+model WorkflowStage {
+  id        String   @id @default(uuid()) @db.Uuid
+  eventId   String   @db.Uuid
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  code      String
+  name      String
+  order     Int
+  tasks     Task[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([eventId, code])
+  @@unique([eventId, order])
+  @@index([eventId])
+}
+
+model EventMember {
+  id                       String                       @id @default(uuid()) @db.Uuid
+  eventId                  String                       @db.Uuid
+  userId                   String                       @db.Uuid
+  role                     EventMemberRole
+  status                   EventMemberStatus            @default(ACTIVE)
+  departmentId             String?                      @db.Uuid
+  event                    Event                        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user                     User                         @relation(fields: [userId], references: [id])
+  department               Department?                  @relation(fields: [departmentId], references: [id])
+  taskAssignees            TaskAssignee[]
+  receivedPermissionGrants EventMemberPermissionGrant[] @relation("PermissionGrantGrantee")
+  grantedPermissionGrants  EventMemberPermissionGrant[] @relation("PermissionGrantGrantor")
+  revokedPermissionGrants  EventMemberPermissionGrant[] @relation("PermissionGrantRevoker")
+  joinedAt                 DateTime                     @default(now())
+  createdAt                DateTime                     @default(now())
+  updatedAt                DateTime                     @updatedAt
+
+  @@unique([eventId, userId])
+  @@index([userId, status])
+  @@index([eventId, status, role])
+  @@index([departmentId])
+}
+
+model Task {
+  id              String           @id @default(uuid()) @db.Uuid
+  eventId         String           @db.Uuid
+  workflowStageId String           @db.Uuid
+  departmentId    String?          @db.Uuid
+  title           String
+  description     String?
+  status          TaskStatus       @default(NOT_STARTED)
+  priority        TaskPriority     @default(MEDIUM)
+  origin          TaskOrigin       @default(USER_CREATED)
+  templateKey     String?
+  calendarCategory CalendarCategory @default(TASK)
+  dueAt           DateTime
+  createdById     String           @db.Uuid
+  assignedById    String           @db.Uuid
+  completedAt     DateTime?
+  archivedAt      DateTime?
+  event           Event            @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  workflowStage   WorkflowStage    @relation(fields: [workflowStageId], references: [id])
+  department      Department?      @relation(fields: [departmentId], references: [id])
+  createdBy       User             @relation("TaskCreator", fields: [createdById], references: [id])
+  assignedBy      User             @relation("TaskAssigner", fields: [assignedById], references: [id])
+  assignees       TaskAssignee[]
+  attachments     TaskAttachment[]
+  notifications   Notification[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@index([eventId, archivedAt, dueAt])
+  @@index([eventId, status])
+  @@index([eventId, workflowStageId])
+  @@index([eventId, origin])
+  @@index([workflowStageId, status])
+  @@index([workflowStageId])
+  @@index([departmentId])
+  @@unique([eventId, templateKey])
+}
+
+model TaskAssignee {
+  taskId              String      @db.Uuid
+  eventMemberId       String      @db.Uuid
+  assignmentEpisodeId String      @unique @default(uuid()) @db.Uuid
+  task                Task        @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  eventMember         EventMember @relation(fields: [eventMemberId], references: [id])
+  assignedAt          DateTime    @default(now())
+
+  @@id([taskId, eventMemberId])
+  @@index([eventMemberId])
+}
+
+enum EventDelegatedPermission {
+  TASK_VIEW_ALL
+  TASK_CREATE
+  TASK_UPDATE_ANY
+  TASK_ASSIGN
+  TASK_UPDATE_STATUS_ANY
+  TASK_ARCHIVE
+}
+
+model EventMemberPermissionGrant {
+  id                     String                   @id @default(uuid()) @db.Uuid
+  eventId                String                   @db.Uuid
+  granteeEventMemberId   String                   @db.Uuid
+  permission             EventDelegatedPermission
+  grantedByEventMemberId String                   @db.Uuid
+  grantedAt              DateTime                 @default(now())
+  expiresAt              DateTime?
+  revokedAt              DateTime?
+  revokedByEventMemberId String?                  @db.Uuid
+  event                  Event                    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  grantee                EventMember              @relation("PermissionGrantGrantee", fields: [granteeEventMemberId], references: [id], onDelete: Restrict)
+  grantedBy              EventMember              @relation("PermissionGrantGrantor", fields: [grantedByEventMemberId], references: [id], onDelete: Restrict)
+  revokedBy              EventMember?             @relation("PermissionGrantRevoker", fields: [revokedByEventMemberId], references: [id], onDelete: SetNull)
+  createdAt              DateTime                 @default(now())
+  updatedAt              DateTime                 @updatedAt
+
+  // A grant is a reusable current-state row. Re-granting after revocation updates
+  // this row, preventing more than one active grant for an event/member/permission.
+  @@unique([eventId, granteeEventMemberId, permission])
+  @@index([eventId])
+  @@index([granteeEventMemberId])
+  @@index([permission])
+  @@index([revokedAt])
+  @@index([expiresAt])
+}
+
+model TaskAttachment {
+  id               String   @id @default(uuid()) @db.Uuid
+  taskId           String   @db.Uuid
+  uploadedById     String   @db.Uuid
+  objectKey        String   @unique
+  originalFileName String
+  mimeType         String
+  sizeBytes        Int
+  task             Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  uploadedBy       User     @relation("AttachmentUploader", fields: [uploadedById], references: [id])
+  createdAt        DateTime @default(now())
+
+  @@index([taskId])
+  @@index([uploadedById])
+}
+
+enum NotificationType {
+  TASK_ASSIGNED
+  TASK_REASSIGNED
+  TASK_UNASSIGNED
+  EVENT_PERMISSION_GRANTED
+  EVENT_PERMISSION_REVOKED
+}
+
+enum OutboxStatus {
+  PENDING
+  PROCESSING
+  PUBLISHED
+  FAILED
+}
+
+model Notification {
+  id                  String           @id @default(uuid()) @db.Uuid
+  recipientUserId     String           @db.Uuid
+  actorUserId         String?          @db.Uuid
+  type                NotificationType
+  title               String
+  body                String
+  eventId             String?          @db.Uuid
+  taskId              String?          @db.Uuid
+  actionPath          String
+  deduplicationKey    String           @unique
+  payload             Json?
+  readAt              DateTime?
+  realtimePublishedAt DateTime?
+  recipient           User             @relation("NotificationRecipient", fields: [recipientUserId], references: [id], onDelete: Cascade)
+  actor               User?            @relation("NotificationActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  event               Event?           @relation(fields: [eventId], references: [id], onDelete: SetNull)
+  task                Task?            @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+
+  @@index([recipientUserId, createdAt])
+  @@index([recipientUserId, readAt])
+  @@index([eventId])
+  @@index([taskId])
+  @@index([type])
+  @@index([createdAt])
+}
+
+model NotificationPreference {
+  userId         String   @id @db.Uuid
+  inAppEnabled   Boolean  @default(true)
+  soundEnabled   Boolean  @default(true)
+  desktopEnabled Boolean  @default(false)
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model OutboxEvent {
+  id               String       @id @default(uuid()) @db.Uuid
+  eventType        String
+  aggregateType    String
+  aggregateId      String       @db.Uuid
+  payload          Json
+  deduplicationKey String       @unique
+  status           OutboxStatus @default(PENDING)
+  attempts         Int          @default(0)
+  availableAt      DateTime     @default(now())
+  lockedAt         DateTime?
+  processedAt      DateTime?
+  lastError        String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  @@index([status, availableAt])
+  @@index([status, lockedAt])
+  @@index([aggregateType, aggregateId])
+}
+
+model AuditLog {
+  id          String   @id @default(uuid()) @db.Uuid
+  actorUserId String?  @db.Uuid
+  actorUser   User?    @relation("AuditActor", fields: [actorUserId], references: [id])
+  action      String
+  targetType  String?
+  targetId    String?
+  metadata    Json?
+  requestId   String?
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+
+  @@index([action, createdAt])
+  @@index([actorUserId, createdAt])
+  @@index([targetId])
+}
